@@ -71,6 +71,12 @@ _C.DATASETS = CN()
 _C.DATASETS.NAMES = ('market1501')
 # Root directory where datasets should be used (and downloaded if not found)
 _C.DATASETS.ROOT_DIR = ('./data')
+# Training folder for AIHub KAIST dataset (bounding_box_train_1/2/3/sample_train)
+_C.DATASETS.TRAIN_FOLDER = 'bounding_box_train_1'
+# Query folder for AIHub KAIST dataset (query/sample_query/sample_query_reduced)
+_C.DATASETS.QUERY_FOLDER = 'query'
+# Gallery folder for AIHub KAIST dataset (bounding_box_test/sample_test/sample_test_reduced)
+_C.DATASETS.GALLERY_FOLDER = 'bounding_box_test'
 
 # -----------------------------------------------------------------------------
 # DataLoader

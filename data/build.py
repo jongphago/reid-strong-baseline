@@ -16,11 +16,19 @@ def make_data_loader(cfg):
     train_transforms = build_transforms(cfg, is_train=True)
     val_transforms = build_transforms(cfg, is_train=False)
     num_workers = cfg.DATALOADER.NUM_WORKERS
+    
+    # Prepare kwargs for dataset initialization
+    dataset_kwargs = {'root': cfg.DATASETS.ROOT_DIR}
+    if cfg.DATASETS.NAMES == 'aihub_kaist':
+        dataset_kwargs['train_folder'] = cfg.DATASETS.TRAIN_FOLDER
+        dataset_kwargs['query_folder'] = cfg.DATASETS.QUERY_FOLDER
+        dataset_kwargs['gallery_folder'] = cfg.DATASETS.GALLERY_FOLDER
+    
     if len(cfg.DATASETS.NAMES) == 1:
-        dataset = init_dataset(cfg.DATASETS.NAMES, root=cfg.DATASETS.ROOT_DIR)
+        dataset = init_dataset(cfg.DATASETS.NAMES, **dataset_kwargs)
     else:
         # TODO: add multi dataset to train
-        dataset = init_dataset(cfg.DATASETS.NAMES, root=cfg.DATASETS.ROOT_DIR)
+        dataset = init_dataset(cfg.DATASETS.NAMES, **dataset_kwargs)
 
     num_classes = dataset.num_train_pids
     train_set = ImageDataset(dataset.train, train_transforms)
