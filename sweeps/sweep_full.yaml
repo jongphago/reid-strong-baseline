@@ -1,0 +1,28 @@
+# Full hyperparameter sweep
+# 전체 하이퍼파라미터 최적화 (Bayesian search with early termination)
+
+name: reid_full_sweep
+method: bayes
+
+metric:
+  name: val/mAP
+  goal: maximize
+
+parameters:
+  base_lr: [0.0001, 0.00025, 0.00035, 0.0005, 0.0007]
+  weight_decay: [0.0001, 0.0005, 0.001]
+  warmup_factor: [0.01, 0.05, 0.1]
+  warmup_iters: [0, 10, 20]
+  margin: [0.2, 0.3, 0.4]
+  ims_per_batch: [32, 64, 96]
+
+count: 30
+results_dir_base: ./log/sweep_full
+
+early_terminate:
+  type: hyperband
+  max_iter: 10
+  min_iter: 3
+  s: 2
+  eta: 3
+

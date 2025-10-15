@@ -1,0 +1,19 @@
+# Optimizer hyperparameters sweep
+# 옵티마이저 하이퍼파라미터 최적화 (Random search)
+
+name: reid_optimizer_sweep
+method: random
+
+metric:
+  name: val/mAP
+  goal: maximize
+
+parameters:
+  base_lr: [0.0001, 0.00025, 0.00035, 0.0005, 0.0007]
+  weight_decay: [0.0001, 0.0005, 0.001]
+  warmup_factor: [0.01, 0.05, 0.1]
+  warmup_iters: [0, 10, 20]
+
+count: 15
+results_dir_base: ./log/sweep_optimizer
+

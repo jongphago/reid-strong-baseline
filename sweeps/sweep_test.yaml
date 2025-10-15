@@ -1,0 +1,18 @@
+# Quick test sweep configuration
+# 빠른 테스트용 설정 (3 runs, 2 epochs)
+
+name: reid_test_sweep
+method: random
+
+metric:
+  name: val/mAP
+  goal: maximize
+
+parameters:
+  base_lr: [0.0001, 0.00035, 0.0005]
+  weight_decay: [0.0001, 0.0005]
+  max_epochs: [2]  # 빠른 테스트
+
+count: 3
+results_dir_base: ./log/sweep_test
+

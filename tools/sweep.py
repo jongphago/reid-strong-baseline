@@ -1,0 +1,312 @@
+# encoding: utf-8
+"""
+W&B Sweep launcher for Re-Identification
+
+This script creates a Weights & Biases sweep for hyperparameter tuning.
+For each sweep trial, it launches the regular train.py script with parameter overrides.
+
+Usage:
+  python tools/sweep.py \
+      --config_file configs/baseline.yml \
+      --sweep-config sweeps/sweep_test.yaml
+
+Optional flags:
+  --count           Number of sweep runs to execute
+  --method          Sweep method: grid|random|bayes
+  --sweep_id        Existing W&B sweep ID to resume
+  --sweep-config    Path to YAML file containing sweep settings
+"""
+
+import argparse
+import os
+import shlex
+import subprocess
+import sys
+
+import wandb
+import yaml
+
+
+def load_sweep_config(sweep_config_path):
+    """Load sweep configuration from YAML file"""
+    if not sweep_config_path:
+        return {}
+    
+    try:
+        with open(sweep_config_path, 'r') as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"WARNING: Failed to load sweep config '{sweep_config_path}': {e}")
+        return {}
+
+
+def load_wandb_project_entity(config_path):
+    """Extract W&B project and entity from config file"""
+    project = os.getenv("WANDB_PROJECT", "reid-strong-baseline")
+    entity = os.getenv("WANDB_ENTITY", "")
+    
+    try:
+        with open(config_path, 'r') as f:
+            cfg = yaml.safe_load(f) or {}
+        if isinstance(cfg, dict) and "WANDB" in cfg:
+            wandb_cfg = cfg["WANDB"]
+            if isinstance(wandb_cfg, dict):
+                project = wandb_cfg.get("PROJECT", project)
+                entity = wandb_cfg.get("ENTITY", entity)
+    except Exception:
+        pass
+    
+    return project, entity if entity else None
+
+
+def as_list(value):
+    """Convert value to list"""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return [s.strip() for s in value.split(",") if s.strip()]
+    return [value]
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        "reid_sweep",
+        description="W&B Sweep for Re-Identification hyperparameter tuning"
+    )
+    
+    # Required arguments
+    parser.add_argument(
+        "--config_file",
+        type=str,
+        required=True,
+        help="Path to base config file (e.g., configs/baseline.yml)"
+    )
+    
+    # Sweep configuration
+    parser.add_argument(
+        "--sweep-config",
+        type=str,
+        default=None,
+        help="Path to sweep configuration YAML file"
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=None,
+        help="Number of sweep runs to execute"
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        choices=["grid", "random", "bayes"],
+        default=None,
+        help="Sweep method (default: from config or 'random')"
+    )
+    parser.add_argument(
+        "--sweep_id",
+        type=str,
+        default=None,
+        help="Existing W&B sweep ID to resume"
+    )
+    
+    # Hyperparameter values (CLI overrides)
+    parser.add_argument(
+        "--lr_values",
+        type=str,
+        default=None,
+        help="Comma-separated list of learning rates"
+    )
+    parser.add_argument(
+        "--wd_values",
+        type=str,
+        default=None,
+        help="Comma-separated list of weight decay values"
+    )
+    
+    args = parser.parse_args()
+    
+    # Check if config file exists
+    if not os.path.exists(args.config_file):
+        print(f"ERROR: Config file not found: {args.config_file}")
+        sys.exit(1)
+    
+    # Load sweep configuration from YAML
+    sweep_cfg = load_sweep_config(args.sweep_config)
+    
+    # Extract W&B project and entity
+    project, entity = load_wandb_project_entity(args.config_file)
+    
+    # Prepare sweep configuration
+    method = args.method or sweep_cfg.get("method", "random")
+    name = sweep_cfg.get("name", "reid_sweep")
+    metric = sweep_cfg.get("metric", {"name": "val/mAP", "goal": "maximize"})
+    
+    # Get parameter values (CLI overrides YAML)
+    cfg_params = sweep_cfg.get("parameters", {})
+    
+    lr_values = as_list(args.lr_values) or cfg_params.get("base_lr", [0.00035])
+    wd_values = as_list(args.wd_values) or cfg_params.get("weight_decay", [0.0005])
+    warmup_factor_values = cfg_params.get("warmup_factor")
+    warmup_iters_values = cfg_params.get("warmup_iters")
+    margin_values = cfg_params.get("margin")
+    batch_size_values = cfg_params.get("ims_per_batch")
+    max_epochs_values = cfg_params.get("max_epochs")
+    
+    # Build sweep configuration
+    sweep_config = {
+        "name": name,
+        "method": method,
+        "metric": metric,
+        "parameters": {
+            "base_lr": {"values": [float(v) for v in lr_values]},
+            "weight_decay": {"values": [float(v) for v in wd_values]},
+        }
+    }
+    
+    # Add optional parameters if specified
+    if warmup_factor_values:
+        sweep_config["parameters"]["warmup_factor"] = {
+            "values": [float(v) for v in as_list(warmup_factor_values)]
+        }
+    if warmup_iters_values:
+        sweep_config["parameters"]["warmup_iters"] = {
+            "values": [int(v) for v in as_list(warmup_iters_values)]
+        }
+    if margin_values:
+        sweep_config["parameters"]["margin"] = {
+            "values": [float(v) for v in as_list(margin_values)]
+        }
+    if batch_size_values:
+        sweep_config["parameters"]["ims_per_batch"] = {
+            "values": [int(v) for v in as_list(batch_size_values)]
+        }
+    if max_epochs_values:
+        sweep_config["parameters"]["max_epochs"] = {
+            "values": [int(v) for v in as_list(max_epochs_values)]
+        }
+    
+    # Add early termination if specified
+    if sweep_cfg.get("early_terminate"):
+        sweep_config["early_terminate"] = sweep_cfg["early_terminate"]
+    
+    # Create or resume sweep
+    if args.sweep_id:
+        sweep_id = args.sweep_id
+        print(f"Resuming existing sweep: {sweep_id}")
+    else:
+        sweep_id = wandb.sweep(sweep_config, project=project, entity=entity)
+        print(f"Created new sweep: {sweep_id}")
+    
+    # Determine base results directory
+    results_dir_base = sweep_cfg.get("results_dir_base", "./log/sweep")
+    
+    def train_sweep():
+        """Function called by wandb agent for each run"""
+        # Initialize wandb run
+        run = wandb.init(project=project, entity=entity)
+        
+        # Get parameters from wandb.config
+        base_lr = wandb.config.get("base_lr")
+        weight_decay = wandb.config.get("weight_decay")
+        warmup_factor = wandb.config.get("warmup_factor")
+        warmup_iters = wandb.config.get("warmup_iters")
+        margin = wandb.config.get("margin")
+        ims_per_batch = wandb.config.get("ims_per_batch")
+        max_epochs = wandb.config.get("max_epochs")
+        
+        # Create unique directory for this run
+        run_name = run.name.replace(" ", "_") if run.name else run.id
+        run_results_dir = os.path.join(results_dir_base, "sweep", sweep_id, run_name)
+        
+        # Build training command
+        cmd_parts = [
+            sys.executable,
+            "tools/train.py",
+            f"--config_file={args.config_file}",
+        ]
+        
+        # Add OUTPUT_DIR (key and value must be separate for YACS)
+        cmd_parts.append("OUTPUT_DIR")
+        cmd_parts.append(run_results_dir)
+        
+        # Add hyperparameter overrides (key and value must be separate)
+        if base_lr is not None:
+            cmd_parts.append("SOLVER.BASE_LR")
+            cmd_parts.append(str(base_lr))
+        if weight_decay is not None:
+            cmd_parts.append("SOLVER.WEIGHT_DECAY")
+            cmd_parts.append(str(weight_decay))
+        if warmup_factor is not None:
+            cmd_parts.append("SOLVER.WARMUP_FACTOR")
+            cmd_parts.append(str(warmup_factor))
+        if warmup_iters is not None:
+            cmd_parts.append("SOLVER.WARMUP_ITERS")
+            cmd_parts.append(str(warmup_iters))
+        if margin is not None:
+            cmd_parts.append("SOLVER.MARGIN")
+            cmd_parts.append(str(margin))
+        if ims_per_batch is not None:
+            cmd_parts.append("SOLVER.IMS_PER_BATCH")
+            cmd_parts.append(str(ims_per_batch))
+        if max_epochs is not None:
+            cmd_parts.append("SOLVER.MAX_EPOCHS")
+            cmd_parts.append(str(max_epochs))
+        
+        # Set environment variables for W&B
+        env = os.environ.copy()
+        if run.id:
+            env["WANDB_RUN_ID"] = run.id
+        if sweep_id:
+            env["WANDB_SWEEP_ID"] = sweep_id
+        env.setdefault("WANDB_RESUME", "allow")
+        
+        print(f"\n{'='*80}")
+        print(f"Starting sweep run: {run.name}")
+        print(f"Command: {shlex.join(cmd_parts)}")
+        print(f"{'='*80}\n")
+        
+        try:
+            # Run training
+            subprocess.run(cmd_parts, check=True, env=env)
+        except subprocess.CalledProcessError as e:
+            print(f"Training failed with error: {e}")
+        finally:
+            # Finish W&B run
+            wandb.finish()
+    
+    # Determine count
+    if args.count is not None:
+        count = args.count
+    else:
+        # Calculate total combinations for grid search
+        if method == "grid":
+            count = 1
+            for param_config in sweep_config["parameters"].values():
+                if "values" in param_config:
+                    count *= len(param_config["values"])
+        else:
+            count = sweep_cfg.get("count", 10)
+    
+    print(f"\n{'='*80}")
+    print(f"Sweep Configuration:")
+    print(f"  Name: {name}")
+    print(f"  Method: {method}")
+    print(f"  Metric: {metric['name']} ({metric['goal']})")
+    print(f"  Count: {count}")
+    print(f"  Parameters: {list(sweep_config['parameters'].keys())}")
+    print(f"{'='*80}\n")
+    
+    # Run sweep agent
+    wandb.agent(sweep_id, function=train_sweep, count=count, project=project, entity=entity)
+    
+    print(f"\n{'='*80}")
+    print(f"Sweep completed!")
+    print(f"View results at: https://wandb.ai/{entity if entity else 'YOUR_USERNAME'}/{project}/sweeps/{sweep_id}")
+    print(f"{'='*80}\n")
+
+
+if __name__ == "__main__":
+    main()
+
