@@ -159,3 +159,22 @@ _C.TEST.FEAT_NORM = 'yes'
 # ---------------------------------------------------------------------------- #
 # Path to checkpoint and saved log of trained model
 _C.OUTPUT_DIR = ""
+
+# ---------------------------------------------------------------------------- #
+# W&B Config
+# ---------------------------------------------------------------------------- #
+_C.WANDB = CN()
+# Enable W&B logging
+_C.WANDB.ENABLE = True
+# W&B project name
+_C.WANDB.PROJECT = "reid-strong-baseline"
+# W&B entity (team/user name)
+_C.WANDB.ENTITY = ""
+# Experiment name (auto-generated if empty)
+_C.WANDB.NAME = ""
+# List of tags for the experiment
+_C.WANDB.TAGS = []
+# Sync tensorboard logs to W&B
+_C.WANDB.SYNC_TENSORBOARD = False
+# Save code to W&B
+_C.WANDB.SAVE_CODE = False

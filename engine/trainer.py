@@ -13,6 +13,7 @@ from ignite.handlers import ModelCheckpoint, Timer
 from ignite.metrics import RunningAverage
 
 from utils.reid_metric import R1_mAP
+from utils.wandb_utils import log_metrics
 
 global ITER
 ITER = 0
@@ -140,7 +141,8 @@ def do_train(
         scheduler,
         loss_fn,
         num_query,
-        start_epoch
+        start_epoch,
+        wandb_run=None
 ):
     log_period = cfg.SOLVER.LOG_PERIOD
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
@@ -183,6 +185,16 @@ def do_train(
                         .format(engine.state.epoch, ITER, len(train_loader),
                                 engine.state.metrics['avg_loss'], engine.state.metrics['avg_acc'],
                                 scheduler.get_lr()[0]))
+            
+            # W&B logging
+            if wandb_run is not None:
+                log_metrics({
+                    'train/loss': engine.state.metrics['avg_loss'],
+                    'train/acc': engine.state.metrics['avg_acc'],
+                    'train/lr': scheduler.get_lr()[0],
+                    'epoch': engine.state.epoch,
+                }, step=ITER + (engine.state.epoch - 1) * len(train_loader))
+        
         if len(train_loader) == ITER:
             ITER = 0
 
@@ -204,6 +216,18 @@ def do_train(
             logger.info("mAP: {:.1%}".format(mAP))
             for r in [1, 5, 10]:
                 logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
+            
+            # W&B logging
+            if wandb_run is not None:
+                # Use the same step as training (total iterations so far)
+                current_step = engine.state.epoch * len(train_loader)
+                log_metrics({
+                    'val/mAP': mAP,
+                    'val/cmc_rank_1': cmc[0],
+                    'val/cmc_rank_5': cmc[4],
+                    'val/cmc_rank_10': cmc[9],
+                    'epoch': engine.state.epoch,
+                }, step=current_step)
 
     trainer.run(train_loader, max_epochs=epochs)
 
@@ -219,7 +243,8 @@ def do_train_with_center(
         scheduler,
         loss_fn,
         num_query,
-        start_epoch
+        start_epoch,
+        wandb_run=None
 ):
     log_period = cfg.SOLVER.LOG_PERIOD
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
@@ -265,6 +290,16 @@ def do_train_with_center(
                         .format(engine.state.epoch, ITER, len(train_loader),
                                 engine.state.metrics['avg_loss'], engine.state.metrics['avg_acc'],
                                 scheduler.get_lr()[0]))
+            
+            # W&B logging
+            if wandb_run is not None:
+                log_metrics({
+                    'train/loss': engine.state.metrics['avg_loss'],
+                    'train/acc': engine.state.metrics['avg_acc'],
+                    'train/lr': scheduler.get_lr()[0],
+                    'epoch': engine.state.epoch,
+                }, step=ITER + (engine.state.epoch - 1) * len(train_loader))
+        
         if len(train_loader) == ITER:
             ITER = 0
 
@@ -286,5 +321,17 @@ def do_train_with_center(
             logger.info("mAP: {:.1%}".format(mAP))
             for r in [1, 5, 10]:
                 logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
+            
+            # W&B logging
+            if wandb_run is not None:
+                # Use the same step as training (total iterations so far)
+                current_step = engine.state.epoch * len(train_loader)
+                log_metrics({
+                    'val/mAP': mAP,
+                    'val/cmc_rank_1': cmc[0],
+                    'val/cmc_rank_5': cmc[4],
+                    'val/cmc_rank_10': cmc[9],
+                    'epoch': engine.state.epoch,
+                }, step=current_step)
 
     trainer.run(train_loader, max_epochs=epochs)

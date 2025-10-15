@@ -20,9 +20,13 @@ from layers import make_loss, make_loss_with_center
 from solver import make_optimizer, make_optimizer_with_center, WarmupMultiStepLR
 
 from utils.logger import setup_logger
+from utils.wandb_utils import initialize_wandb
 
 
 def train(cfg):
+    # W&B initialization
+    wandb_run = initialize_wandb(cfg)
+    
     # prepare dataset
     train_loader, val_loader, num_query, num_classes = make_data_loader(cfg)
 
@@ -65,7 +69,8 @@ def train(cfg):
             scheduler,      # modify for using self trained model
             loss_func,
             num_query,
-            start_epoch     # add for using self trained model
+            start_epoch,    # add for using self trained model
+            wandb_run       # add for W&B logging
         )
     elif cfg.MODEL.IF_WITH_CENTER == 'yes':
         print('Train with center loss, the loss type is', cfg.MODEL.METRIC_LOSS_TYPE)
@@ -110,7 +115,8 @@ def train(cfg):
             scheduler,      # modify for using self trained model
             loss_func,
             num_query,
-            start_epoch     # add for using self trained model
+            start_epoch,    # add for using self trained model
+            wandb_run       # add for W&B logging
         )
     else:
         print("Unsupported value for cfg.MODEL.IF_WITH_CENTER {}, only support yes or no!\n".format(cfg.MODEL.IF_WITH_CENTER))
