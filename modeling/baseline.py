@@ -172,7 +172,13 @@ class Baseline(nn.Module):
                 return global_feat
 
     def load_param(self, trained_path):
-        param_dict = torch.load(trained_path)
+        loaded_obj = torch.load(trained_path, weights_only=False)
+        # 전체 모델 객체가 저장된 경우 state_dict 추출
+        if hasattr(loaded_obj, 'state_dict'):
+            param_dict = loaded_obj.state_dict()
+        else:
+            param_dict = loaded_obj
+        
         for i in param_dict:
             if 'classifier' in i:
                 continue
