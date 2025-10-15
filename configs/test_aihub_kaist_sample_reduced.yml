@@ -1,0 +1,78 @@
+MODEL:
+  NAME: 'resnet50'
+  PRETRAIN_CHOICE: 'imagenet'
+  PRETRAIN_PATH: '/home/jongphago/.torch/models/resnet50.pth'
+  METRIC_LOSS_TYPE: 'triplet'
+  IF_LABELSMOOTH: 'on'
+  IF_WITH_CENTER: 'no'
+
+INPUT:
+  SIZE_TRAIN: [192, 96]  # 더 작은 입력 크기로 빠른 테스트
+  SIZE_TEST: [192, 96]
+  PROB: 0.5
+  RE_PROB: 0.0  # Random Erasing 비활성화로 속도 향상
+  PADDING: 10
+
+DATASETS:
+  NAMES: 'aihub_kaist'
+  ROOT_DIR: './data'
+  # Reduced sample 데이터 사용 (매우 작은 데이터셋)
+  TRAIN_FOLDER: 'sample_train'
+  QUERY_FOLDER: 'sample_query_reduced'
+  GALLERY_FOLDER: 'sample_test_reduced'
+
+DATALOADER:
+  SAMPLER: 'softmax'  # Softmax만 사용
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 2
+
+SOLVER:
+  OPTIMIZER_NAME: 'Adam'
+  MAX_EPOCHS: 2  # 매우 짧은 학습
+  BASE_LR: 0.00035
+
+  CLUSTER_MARGIN: 0.3
+
+  CENTER_LR: 0.5
+  CENTER_LOSS_WEIGHT: 0.0005
+
+  RANGE_K: 2
+  RANGE_MARGIN: 0.3
+  RANGE_ALPHA: 0
+  RANGE_BETA: 1
+  RANGE_LOSS_WEIGHT: 1
+
+  BIAS_LR_FACTOR: 1
+  WEIGHT_DECAY: 0.0005
+  WEIGHT_DECAY_BIAS: 0.0005
+  IMS_PER_BATCH: 8  # 매우 작은 배치
+
+  STEPS: [40, 70]
+  GAMMA: 0.1
+
+  WARMUP_FACTOR: 0.01
+  WARMUP_ITERS: 3
+  WARMUP_METHOD: 'linear'
+
+  CHECKPOINT_PERIOD: 1  # 매 에포크마다 체크포인트
+  LOG_PERIOD: 2  # 2 배치마다 로그
+  EVAL_PERIOD: 1  # 매 에포크마다 평가
+
+TEST:
+  IMS_PER_BATCH: 16
+  RE_RANKING: 'no'
+  WEIGHT: "path"
+  NECK_FEAT: 'after'
+  FEAT_NORM: 'yes'
+
+OUTPUT_DIR: "./log/test_aihub_kaist_sample_reduced"
+
+WANDB:
+  ENABLE: True
+  PROJECT: "reid-aihub-kaist-test"
+  ENTITY: ""
+  NAME: "sample-reduced-test"
+  TAGS: ["test", "sample", "reduced", "aihub", "kaist"]
+  SYNC_TENSORBOARD: False
+  SAVE_CODE: False
+
