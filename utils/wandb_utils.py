@@ -35,6 +35,11 @@ def initialize_wandb(cfg):
     if not cfg.WANDB.ENABLE:
         return None
     
+    # Check if W&B is disabled via environment variable (e.g., during sweep)
+    if os.getenv("WANDB_MODE") == "disabled":
+        print("W&B is disabled via WANDB_MODE environment variable (sweep mode)")
+        return None
+    
     if not check_wandb_logged_in():
         print("Warning: W&B login failed. Logging disabled.")
         return None

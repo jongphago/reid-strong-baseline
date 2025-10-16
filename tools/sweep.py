@@ -204,7 +204,7 @@ def main():
     
     def train_sweep():
         """Function called by wandb agent for each run"""
-        # Initialize wandb run
+        # Initialize wandb run (required for sweep)
         run = wandb.init(project=project, entity=entity)
         
         # Get parameters from wandb.config
@@ -254,13 +254,11 @@ def main():
             cmd_parts.append("SOLVER.MAX_EPOCHS")
             cmd_parts.append(str(max_epochs))
         
-        # Set environment variables for W&B
+        # Set environment variables
         env = os.environ.copy()
-        if run.id:
-            env["WANDB_RUN_ID"] = run.id
-        if sweep_id:
-            env["WANDB_SWEEP_ID"] = sweep_id
-        env.setdefault("WANDB_RESUME", "allow")
+        # Disable W&B in child process to avoid conflicts
+        # Parent process (this function) will handle all W&B logging
+        env["WANDB_MODE"] = "disabled"
         
         print(f"\n{'='*80}")
         print(f"Starting sweep run: {run.name}")
@@ -268,9 +266,49 @@ def main():
         print(f"{'='*80}\n")
         
         try:
-            # Run training
-            subprocess.run(cmd_parts, check=True, env=env)
-        except subprocess.CalledProcessError as e:
+            # Run training and capture output for logging
+            import re
+            process = subprocess.Popen(
+                cmd_parts,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
+            )
+            
+            # Parse output and log metrics to W&B
+            step = 0
+            for line in iter(process.stdout.readline, ''):
+                print(line, end='')  # Echo output
+                
+                # Parse training metrics: "Epoch[X] Iteration[Y/Z] Loss: L, Acc: A, Base Lr: R"
+                train_match = re.search(r'Epoch\[(\d+)\].*Loss:\s*([\d.]+).*Acc:\s*([\d.]+).*Base Lr:\s*([\d.e-]+)', line)
+                if train_match:
+                    epoch = int(train_match.group(1))
+                    loss = float(train_match.group(2))
+                    acc = float(train_match.group(3))
+                    lr = float(train_match.group(4))
+                    wandb.log({'train/loss': loss, 'train/acc': acc, 'train/lr': lr, 'epoch': epoch}, step=step)
+                    step += 1
+                
+                # Parse validation metrics: "mAP: X%"
+                map_match = re.search(r'mAP:\s*([\d.]+)%', line)
+                if map_match:
+                    mAP = float(map_match.group(1))
+                    wandb.log({'val/mAP': mAP}, step=step)
+                
+                # Parse CMC metrics: "CMC curve, Rank-X :Y%"
+                cmc_match = re.search(r'CMC curve, Rank-(\d+)\s*:([\d.]+)%', line)
+                if cmc_match:
+                    rank = int(cmc_match.group(1))
+                    value = float(cmc_match.group(2))
+                    wandb.log({f'val/cmc_rank_{rank}': value}, step=step)
+            
+            process.wait()
+            if process.returncode != 0:
+                print(f"Training failed with exit code: {process.returncode}")
+        except Exception as e:
             print(f"Training failed with error: {e}")
         finally:
             # Finish W&B run
