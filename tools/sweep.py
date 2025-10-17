@@ -146,13 +146,42 @@ def main():
     # Get parameter values (CLI overrides YAML)
     cfg_params = sweep_cfg.get("parameters", {})
     
-    lr_values = as_list(args.lr_values) or cfg_params.get("base_lr", [0.00035])
-    wd_values = as_list(args.wd_values) or cfg_params.get("weight_decay", [0.0005])
-    warmup_factor_values = cfg_params.get("warmup_factor")
-    warmup_iters_values = cfg_params.get("warmup_iters")
-    margin_values = cfg_params.get("margin")
-    batch_size_values = cfg_params.get("ims_per_batch")
-    max_epochs_values = cfg_params.get("max_epochs")
+    def process_param(param_value, default_value=None, param_type=float):
+        """Process parameter value - supports both list and distribution formats"""
+        if param_value is None:
+            return default_value
+        
+        # If it's a dictionary with min/max/distribution (continuous distribution)
+        if isinstance(param_value, dict):
+            # W&B format for continuous distributions
+            result = {}
+            if "min" in param_value and "max" in param_value:
+                result["min"] = param_type(param_value["min"])
+                result["max"] = param_type(param_value["max"])
+                if "distribution" in param_value:
+                    result["distribution"] = param_value["distribution"]
+                return result
+            # If it has "values" key (discrete values in dict format)
+            elif "values" in param_value:
+                return {"values": [param_type(v) for v in param_value["values"]]}
+        
+        # If it's a list (discrete values)
+        if isinstance(param_value, list):
+            return {"values": [param_type(v) for v in param_value]}
+        
+        # Single value
+        return {"values": [param_type(param_value)]}
+    
+    lr_values = process_param(
+        as_list(args.lr_values) if args.lr_values else cfg_params.get("base_lr"),
+        {"values": [0.00035]},
+        float
+    )
+    wd_values = process_param(
+        as_list(args.wd_values) if args.wd_values else cfg_params.get("weight_decay"),
+        {"values": [0.0005]},
+        float
+    )
     
     # Build sweep configuration
     sweep_config = {
@@ -160,32 +189,31 @@ def main():
         "method": method,
         "metric": metric,
         "parameters": {
-            "base_lr": {"values": [float(v) for v in lr_values]},
-            "weight_decay": {"values": [float(v) for v in wd_values]},
+            "base_lr": lr_values,
+            "weight_decay": wd_values,
         }
     }
     
     # Add optional parameters if specified
-    if warmup_factor_values:
-        sweep_config["parameters"]["warmup_factor"] = {
-            "values": [float(v) for v in as_list(warmup_factor_values)]
-        }
-    if warmup_iters_values:
-        sweep_config["parameters"]["warmup_iters"] = {
-            "values": [int(v) for v in as_list(warmup_iters_values)]
-        }
-    if margin_values:
-        sweep_config["parameters"]["margin"] = {
-            "values": [float(v) for v in as_list(margin_values)]
-        }
-    if batch_size_values:
-        sweep_config["parameters"]["ims_per_batch"] = {
-            "values": [int(v) for v in as_list(batch_size_values)]
-        }
-    if max_epochs_values:
-        sweep_config["parameters"]["max_epochs"] = {
-            "values": [int(v) for v in as_list(max_epochs_values)]
-        }
+    warmup_factor_param = process_param(cfg_params.get("warmup_factor"), None, float)
+    if warmup_factor_param:
+        sweep_config["parameters"]["warmup_factor"] = warmup_factor_param
+    
+    warmup_iters_param = process_param(cfg_params.get("warmup_iters"), None, int)
+    if warmup_iters_param:
+        sweep_config["parameters"]["warmup_iters"] = warmup_iters_param
+    
+    margin_param = process_param(cfg_params.get("margin"), None, float)
+    if margin_param:
+        sweep_config["parameters"]["margin"] = margin_param
+    
+    batch_size_param = process_param(cfg_params.get("ims_per_batch"), None, int)
+    if batch_size_param:
+        sweep_config["parameters"]["ims_per_batch"] = batch_size_param
+    
+    max_epochs_param = process_param(cfg_params.get("max_epochs"), None, int)
+    if max_epochs_param:
+        sweep_config["parameters"]["max_epochs"] = max_epochs_param
     
     # Add early termination if specified
     if sweep_cfg.get("early_terminate"):

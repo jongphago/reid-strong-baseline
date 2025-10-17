@@ -9,20 +9,41 @@ metric:
   goal: maximize
 
 parameters:
-  base_lr: [0.0001, 0.00025, 0.00035, 0.0005, 0.0007]
-  weight_decay: [0.0001, 0.0005, 0.001]
-  warmup_factor: [0.01, 0.05, 0.1]
-  warmup_iters: [0, 10, 20]
-  margin: [0.2, 0.3, 0.4]
-  ims_per_batch: [32, 64, 96]
+  # 학습률: 로그 스케일로 선택된 이산값
+  # sweep_lr 결과를 바탕으로 낮은 범위에 집중
+  base_lr:
+    values: [0.00005, 0.000075, 0.0001, 0.00015, 0.0002]
+  
+  # Weight decay: 일반적인 범위
+  weight_decay:
+    values: [0.0001, 0.0003, 0.0005, 0.0007, 0.001]
+  
+  # Warmup factor: 작은 범위
+  warmup_factor:
+    values: [0.01, 0.03, 0.05, 0.07, 0.1]
+  
+  # Warmup iterations
+  warmup_iters:
+    values: [0, 10, 20]
+  
+  # Triplet loss margin
+  margin:
+    values: [0.2, 0.25, 0.3, 0.35, 0.4]
+  
+  # 배치 크기: GPU 메모리 고려하여 안전한 범위로 제한
+  # 14GB GPU에서 64는 안정적, 96은 위험
+  ims_per_batch:
+    values: [32, 48, 64]
 
 count: 30
 results_dir_base: ./log/sweep_full
 
+# Early termination strategy
+# 성능이 낮은 실험을 조기 종료하여 시간 절약
 early_terminate:
   type: hyperband
-  max_iter: 10
-  min_iter: 3
-  s: 2
-  eta: 3
+  min_iter: 3          # 최소 30 epoch (10 epoch마다 평가하므로)
+  max_iter: 12         # 최대 120 epoch
+  s: 2                 # Hyperband의 aggressiveness (높을수록 더 공격적)
+  eta: 3               # 각 단계에서 유지할 실험 비율 (1/eta)
 
