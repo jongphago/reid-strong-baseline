@@ -1,0 +1,34 @@
+# GPU 메모리 정리 기능 테스트
+# 3개 실험, 각 20 epoch만 실행하여 빠르게 테스트
+
+name: reid_memory_test
+method: grid
+
+metric:
+  name: val/mAP
+  goal: maximize
+
+parameters:
+  base_lr:
+    values: [0.0001]
+  
+  weight_decay:
+    values: [0.0005]
+  
+  warmup_factor:
+    values: [0.01]
+  
+  warmup_iters:
+    values: [10]
+  
+  margin:
+    values: [0.3]
+  
+  # 메모리 부담이 큰 배치 크기로 테스트
+  ims_per_batch:
+    values: [64, 48, 64]
+
+# 총 3개 실험 (ims_per_batch만 다름)
+count: 3
+results_dir_base: ./log/sweep_memory_test
+

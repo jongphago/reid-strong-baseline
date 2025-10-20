@@ -18,11 +18,14 @@ Optional flags:
 """
 
 import argparse
+import gc
 import os
 import shlex
 import subprocess
 import sys
+import time
 
+import torch
 import wandb
 import yaml
 
@@ -341,6 +344,22 @@ def main():
         finally:
             # Finish W&B run
             wandb.finish()
+            
+            # GPU 메모리 명시적 정리
+            print("\nCleaning up GPU memory...")
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    print(f"GPU memory cleared. Current allocated: {torch.cuda.memory_allocated(0) / 1024**2:.2f} MB")
+                gc.collect()
+            except Exception as cleanup_error:
+                print(f"Warning: GPU cleanup failed: {cleanup_error}")
+            
+            # 다음 실험 시작 전 대기 시간 (GPU 메모리 정리 시간 확보)
+            print("Waiting 5 seconds before next run...")
+            time.sleep(5)
+            print("Ready for next run.\n")
     
     # Determine count
     if args.count is not None:
