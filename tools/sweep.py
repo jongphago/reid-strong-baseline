@@ -297,69 +297,49 @@ def main():
         print(f"{'='*80}\n")
         
         try:
-            # Run training and capture output for logging
-            import re
-            process = subprocess.Popen(
+            # subprocess.run() 사용 (NVIDIA TAO 방식)
+            # stdout을 캡처하지 않고 직접 터미널에 출력
+            result = subprocess.run(
                 cmd_parts,
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1
+                check=False,  # 실패해도 예외를 발생시키지 않음
             )
             
-            # Parse output and log metrics to W&B
-            step = 0
-            for line in iter(process.stdout.readline, ''):
-                print(line, end='')  # Echo output
+            if result.returncode != 0:
+                print(f"\n{'='*80}")
+                print(f"WARNING: Training failed with exit code: {result.returncode}")
+                print(f"{'='*80}\n")
+            else:
+                print(f"\n{'='*80}")
+                print(f"Training completed successfully!")
+                print(f"{'='*80}\n")
                 
-                # Parse training metrics: "Epoch[X] Iteration[Y/Z] Loss: L, Acc: A, Base Lr: R"
-                train_match = re.search(r'Epoch\[(\d+)\].*Loss:\s*([\d.]+).*Acc:\s*([\d.]+).*Base Lr:\s*([\d.e-]+)', line)
-                if train_match:
-                    epoch = int(train_match.group(1))
-                    loss = float(train_match.group(2))
-                    acc = float(train_match.group(3))
-                    lr = float(train_match.group(4))
-                    wandb.log({'train/loss': loss, 'train/acc': acc, 'train/lr': lr, 'epoch': epoch}, step=step)
-                    step += 1
-                
-                # Parse validation metrics: "mAP: X%"
-                map_match = re.search(r'mAP:\s*([\d.]+)%', line)
-                if map_match:
-                    mAP = float(map_match.group(1))
-                    wandb.log({'val/mAP': mAP}, step=step)
-                
-                # Parse CMC metrics: "CMC curve, Rank-X :Y%"
-                cmc_match = re.search(r'CMC curve, Rank-(\d+)\s*:([\d.]+)%', line)
-                if cmc_match:
-                    rank = int(cmc_match.group(1))
-                    value = float(cmc_match.group(2))
-                    wandb.log({f'val/cmc_rank_{rank}': value}, step=step)
-            
-            process.wait()
-            if process.returncode != 0:
-                print(f"Training failed with exit code: {process.returncode}")
         except Exception as e:
-            print(f"Training failed with error: {e}")
+            print(f"\n{'='*80}")
+            print(f"ERROR: Training failed with error: {e}")
+            print(f"{'='*80}\n")
         finally:
             # Finish W&B run
             wandb.finish()
             
-            # GPU 메모리 명시적 정리
-            print("\nCleaning up GPU memory...")
+            # 프로세스 정리 대기 시간 (subprocess 종료 후 OS 정리 시간 확보)
+            print("\n" + "="*80)
+            print("[sweep.py] Waiting 15 seconds for process cleanup...")
+            print("="*80)
+            time.sleep(15)
+            
+            # 추가 메모리 정리 (메인 프로세스용, 보험)
             try:
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-                    print(f"GPU memory cleared. Current allocated: {torch.cuda.memory_allocated(0) / 1024**2:.2f} MB")
                 gc.collect()
-            except Exception as cleanup_error:
-                print(f"Warning: GPU cleanup failed: {cleanup_error}")
+                print("[sweep.py] Main process memory cleanup completed")
+            except Exception:
+                pass
             
-            # 다음 실험 시작 전 대기 시간 (GPU 메모리 정리 시간 확보)
-            print("Waiting 5 seconds before next run...")
-            time.sleep(5)
-            print("Ready for next run.\n")
+            print("="*80)
+            print("[sweep.py] Ready for next run")
+            print("="*80 + "\n")
     
     # Determine count
     if args.count is not None:
