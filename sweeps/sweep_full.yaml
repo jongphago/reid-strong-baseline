@@ -30,20 +30,23 @@ parameters:
   margin:
     values: [0.2, 0.25, 0.3, 0.35, 0.4]
   
-  # 배치 크기: GPU 메모리 고려하여 안전한 범위로 제한
-  # 14GB GPU에서 64는 안정적, 96은 위험
+  # 배치 크기: GPU 메모리 안정성을 위해 64 제거
+  # 14GB GPU에서 32, 48은 안전함
   ims_per_batch:
-    values: [32, 48, 64]
+    values: [32, 48]
 
-count: 30
+# 실험 수 감소 (30 → 15)
+# 메모리 누적 문제를 줄이고 안정성 확보
+count: 15
 results_dir_base: ./log/sweep_full
 
-# Early termination strategy
-# 성능이 낮은 실험을 조기 종료하여 시간 절약
-early_terminate:
-  type: hyperband
-  min_iter: 3          # 최소 30 epoch (10 epoch마다 평가하므로)
-  max_iter: 12         # 최대 120 epoch
-  s: 2                 # Hyperband의 aggressiveness (높을수록 더 공격적)
-  eta: 3               # 각 단계에서 유지할 실험 비율 (1/eta)
+# Early termination 비활성화
+# GPU 메모리 누적 문제를 방지하기 위해 임시 비활성화
+# 모든 실험이 충분한 epoch를 진행하여 메모리 정리 시간 확보
+# early_terminate:
+#   type: hyperband
+#   min_iter: 3          # 최소 30 epoch (10 epoch마다 평가하므로)
+#   max_iter: 12         # 최대 120 epoch
+#   s: 2                 # Hyperband의 aggressiveness (높을수록 더 공격적)
+#   eta: 3               # 각 단계에서 유지할 실험 비율 (1/eta)
 

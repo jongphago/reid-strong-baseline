@@ -297,17 +297,49 @@ def main():
         print(f"{'='*80}\n")
         
         try:
-            # subprocess.run() 사용 (NVIDIA TAO 방식)
-            # stdout을 캡처하지 않고 직접 터미널에 출력
-            result = subprocess.run(
+            # subprocess.Popen()으로 stdout 파싱 (W&B 메트릭 로깅을 위해)
+            import re
+            process = subprocess.Popen(
                 cmd_parts,
                 env=env,
-                check=False,  # 실패해도 예외를 발생시키지 않음
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1
             )
             
-            if result.returncode != 0:
+            # Parse output and log metrics to W&B
+            step = 0
+            for line in iter(process.stdout.readline, ''):
+                print(line, end='')  # Echo output
+                
+                # Parse training metrics: "Epoch[X] Iteration[Y/Z] Loss: L, Acc: A, Base Lr: R"
+                train_match = re.search(r'Epoch\[(\d+)\].*Loss:\s*([\d.]+).*Acc:\s*([\d.]+).*Base Lr:\s*([\d.e-]+)', line)
+                if train_match:
+                    epoch = int(train_match.group(1))
+                    loss = float(train_match.group(2))
+                    acc = float(train_match.group(3))
+                    lr = float(train_match.group(4))
+                    wandb.log({'train/loss': loss, 'train/acc': acc, 'train/lr': lr, 'epoch': epoch}, step=step)
+                    step += 1
+                
+                # Parse validation metrics: "mAP: X%"
+                map_match = re.search(r'mAP:\s*([\d.]+)%', line)
+                if map_match:
+                    mAP = float(map_match.group(1))
+                    wandb.log({'val/mAP': mAP}, step=step)
+                
+                # Parse CMC metrics: "CMC curve, Rank-X :Y%"
+                cmc_match = re.search(r'CMC curve, Rank-(\d+)\s*:([\d.]+)%', line)
+                if cmc_match:
+                    rank = int(cmc_match.group(1))
+                    value = float(cmc_match.group(2))
+                    wandb.log({f'val/cmc_rank_{rank}': value}, step=step)
+            
+            process.wait()
+            if process.returncode != 0:
                 print(f"\n{'='*80}")
-                print(f"WARNING: Training failed with exit code: {result.returncode}")
+                print(f"WARNING: Training failed with exit code: {process.returncode}")
                 print(f"{'='*80}\n")
             else:
                 print(f"\n{'='*80}")
